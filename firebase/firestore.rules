@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() { return request.auth != null; }
+    function isOwner(userId) { return isAuth() && request.auth.uid == userId; }
+    // connections는 uid 문자열 배열이라고 가정
+    function isGuardianOf(userId) {
+      return isAuth()
+        && exists(/databases/$(database)/documents/users/$(userId))
+        && request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.connections;
+    }
+
+    // users 컬렉션
+    match /users/{userId} {
+      allow create: if isAuth() && request.auth.uid == request.resource.data.uid;
+      allow read: if isOwner(userId) || isGuardianOf(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
+
+      // activityLogs 하위 컬렉션
+      match /activityLogs/{logId} {
+        allow create: if isAuth() && request.auth.uid == userId;
+        allow read: if isOwner(userId) || isGuardianOf(userId);
+        allow update, delete: if false;
+      }
+    }
+
+    // 서버 전용 인덱스/임베딩 데이터는 클라이언트 접근 금지
+    match /publicIndexes/{document=**} {
+      allow read, write: if false;
+    }
+
+    // 기본적으로 다른 경로는 인증 필요
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

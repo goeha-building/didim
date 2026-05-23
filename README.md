@@ -68,7 +68,26 @@ npm run deploy
 - 사용자 또는 조직 페이지(`<your-username>.github.io`)인 경우 `homepage`는 생략하거나 `"homepage": "https://<your-username>.github.io"`로 설정합니다.
 - `vite.config.ts`는 이미 `base: './'`로 설정돼 있어 상대 경로 배포에 적합합니다.
 
-### 배포 후 확인
+## API 키 설정
+
+앱은 다음 환경 변수를 사용하여 API 키를 로드합니다.
+
+```bash
+VITE_GEMINI_API_KEY=YOUR_GOOGLE_GEMINI_API_KEY
+VITE_GEMINI_MODEL=chat-bison-001
+VITE_KOREAN_DICT_KEY=YOUR_KOREAN_DICTIONARY_API_KEY
+VITE_KOREAN_DICT_CERTKEY=YOUR_OPTIONAL_DICT_CERTKEY
+```
+
+`.env` 파일을 프로젝트 루트에 만들어서 설정하세요.
+
+```bash
+cp .env.example .env
+```
+
+`VITE_KOREAN_DICT_CERTKEY`는 필요할 경우 추가합니다.
+
+## 배포 후 확인
 - 배포가 완료되면 `https://<your-username>.github.io/<your-repo>/`로 접속하여 앱이 작동하는지 확인합니다.
 
 ## 구현 노트
