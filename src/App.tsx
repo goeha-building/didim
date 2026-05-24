@@ -455,29 +455,30 @@ function App() {
   return (
     <div className="app-shell">
       <header className="top-nav" role="banner">
-        <div className="nav-left">
-          {currentView !== 'home' ? (
-            <button className="back-button" onClick={() => setCurrentView('home')} aria-label="뒤로가기">← 뒤로</button>
-          ) : (
-            <div className="brand">Didim</div>
-          )}
-        </div>
-        <nav className="nav-actions" role="navigation" aria-label="주요 기능">
-          <button onClick={() => navigateTo('scaffold')}>질문 조립기</button>
-          <button onClick={() => navigateTo('map')}>안전망 지도</button>
-          <button onClick={() => navigateTo('accessibility')}>접근성</button>
-          <button onClick={() => navigateTo('ai')}>AI</button>
-          <button onClick={() => navigateTo('data')}>데이터</button>
-          <button onClick={() => navigateTo('dashboard')}>대시보드</button>
-        </nav>
-        <div className="nav-right">
-          <button className="theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-pressed={theme === 'light'}>
-            {theme === 'dark' ? '라이트 모드' : '다크 모드'}
-          </button>
+        <div className="nav-container flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700 sticky top-0 z-50">
+          <div className="nav-left flex items-center gap-2">
+            {currentView !== 'home' ? (
+              <button className="px-3 py-2 hover:bg-slate-700 rounded-lg transition" onClick={() => setCurrentView('home')} aria-label="뒤로가기">← 뒤로</button>
+            ) : (
+              <div className="text-xl font-bold text-cyan-400">Didim</div>
+            )}
+          </div>
+          <nav className="nav-actions hidden sm:flex gap-1" role="navigation" aria-label="주요 기능">
+            {['scaffold', 'map', 'accessibility', 'ai', 'data', 'dashboard'].map((view) => (
+              <button key={view} onClick={() => setCurrentView(view)} className={`px-3 py-2 rounded-lg text-sm transition ${currentView === view ? 'bg-cyan-500 text-slate-900 font-semibold' : 'text-slate-300 hover:bg-slate-700'}`}>
+                {view === 'scaffold' ? '질문 조립기' : view === 'map' ? '안전지도' : view === 'accessibility' ? '접근성' : view === 'ai' ? 'AI' : view === 'data' ? '데이터' : '대시보드'}
+              </button>
+            ))}
+          </nav>
+          <div className="nav-right flex items-center gap-3">
+            <button className="px-3 py-2 text-sm border border-slate-600 rounded-lg hover:bg-slate-700 transition" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-pressed={theme === 'light'}>
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="page-shell">
+      <main className="page-shell max-w-5xl mx-auto px-4 py-6 md:px-6">
         {currentView !== 'home' && (
           <div className="breadcrumb" aria-hidden={false}>
             <button className="crumb-home" onClick={() => setCurrentView('home')}>홈</button>
@@ -486,27 +487,49 @@ function App() {
           </div>
         )}
         {currentView === 'home' && (
-        <section className="hero-card widget-style">
-          <div className="hero-badge">Didim</div>
-          <h1>느린학습자를 위한 AI 학습 플래너</h1>
-          <p>
-            iPhone 위젯처럼 직관적인 모바일 UI로, AI 질문 조립기와 안전망 지도를 함께 제공합니다.
+        <section className="hero-card widget-style bg-gradient-to-br from-slate-800 to-slate-900 border border-cyan-400/20 rounded-2xl p-8 md:p-10 mb-8">
+          <div className="inline-block px-3 py-1 bg-cyan-500/20 text-cyan-300 text-xs font-semibold rounded-full mb-4">Didim v0.1</div>
+          <h1 className="text-4xl md:text-5xl font-bold leading-tight text-white mb-4">
+            느린학습자를 위한<br />AI 학습 플래너
+          </h1>
+          <p className="max-w-2xl text-slate-300 leading-relaxed">
+            iPhone 위젯처럼 직관적인 모바일 UI로, AI 질문 조립기와 안전망 지도를 함께 제공합니다. 장애인과 느린 학습자를 위한 맞춤형 접근성 설계를 포함합니다.
           </p>
-          <div className="hero-grid">
-            <div>
-              <strong>핵심 기능</strong>
-              <p>질문 조립기, 안전망 지도, 유니버설 접근성, RAG 기반 답변.</p>
+          <div className="hero-grid mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-slate-700 bg-slate-700/40 p-5">
+              <strong className="text-cyan-300 text-sm uppercase tracking-[0.24em]">핵심 기능</strong>
+              <p className="mt-3 text-slate-300">질문 조립기, 안전망 지도, 유니버설 접근성, RAG 기반 답변을 통합하여 사용자 맞춤형 학습 경험을 제공합니다.</p>
             </div>
-            <div>
-              <strong>배포</strong>
-              <p>GitHub Pages 배포용 Vite 설정 포함</p>
+            <div className="rounded-2xl border border-slate-700 bg-slate-700/40 p-5">
+              <strong className="text-cyan-300 text-sm uppercase tracking-[0.24em]">배포</strong>
+              <p className="mt-3 text-slate-300">GitHub Pages 배포용 Vite + React + TypeScript 설정을 포함합니다. 향후 서버리스 API 연동으로 확장 가능합니다.</p>
             </div>
           </div>
         </section>
         )}
 
+        {(currentView === 'home' || !currentView) && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="rounded-2xl border border-slate-700 bg-slate-800/80 p-6 hover:border-cyan-400/50 transition shadow-lg">
+              <div className="text-3xl mb-3">🧩</div>
+              <h3 className="text-xl font-semibold text-white mb-2">질문 조립기</h3>
+              <p className="text-slate-300 text-sm">다중선택형 칩으로 프롬프트를 쉽게 조립하고 AI에게 명확한 질문을 전달합니다.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-700 bg-slate-800/80 p-6 hover:border-cyan-400/50 transition shadow-lg">
+              <div className="text-3xl mb-3">🗺️</div>
+              <h3 className="text-xl font-semibold text-white mb-2">안전지도</h3>
+              <p className="text-slate-300 text-sm">실시간 위치 추적과 위험 지역 오버레이로 생활 안전망을 시각화합니다.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-700 bg-slate-800/80 p-6 hover:border-cyan-400/50 transition shadow-lg">
+              <div className="text-3xl mb-3">🎤</div>
+              <h3 className="text-xl font-semibold text-white mb-2">음성 지원</h3>
+              <p className="text-slate-300 text-sm">STT/TTS 기반 음성 인터페이스로 손-눈 사용이 어려운 상황에서도 접근성을 제공합니다.</p>
+            </div>
+          </div>
+        )}
+
         {currentView === 'home' && (
-          <section className="section-card firebase-section">
+          <section className="section-card firebase-section bg-slate-800 border border-slate-700 rounded-2xl p-8 mb-8">
             <h2>Firebase 사용자 연결</h2>
             <p>Firebase 인증으로 사용자 식별을 하고, 보호자와 상태를 공유할 수 있습니다.</p>
             {authLoading ? (

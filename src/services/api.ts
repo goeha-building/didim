@@ -47,136 +47,75 @@ function parseDictionaryResponse(data: any, rawText: string): string {
 }
 
 export async function generateAiResponse(prompt: string): Promise<string> {
-  const apiKey = requireKey(GEMINI_API_KEY, 'Gemini API 키');
-  const base = `https://generativelanguage.googleapis.com/v1beta2/models/${GEMINI_MODEL}`;
-
-  const bodies = [
-    { instances: [{ input: prompt }], parameters: { temperature: 0.65, candidateCount: 1 } },
-    { prompt: { text: prompt }, temperature: 0.65, candidateCount: 1 },
-    { text: prompt, temperature: 0.65, candidateCount: 1 },
-    { input: prompt, temperature: 0.65 },
-    {
-      messages: [
-        { author: 'user', content: [{ type: 'text', text: prompt }] },
-      ],
-      temperature: 0.65,
-      candidateCount: 1,
-    },
-  ];
-
-  const endpoints = [
-    `${base}:generate`,
-    `${base}:generateMessage`,
-    `${base}:generateText`,
-  ];
-
-  let lastError: any = null;
-  let data: any = null;
-
-  // Try combinations: endpoint + body, and try sending API key as query param or Bearer token
-  for (const endpoint of endpoints) {
-    for (const body of bodies) {
-      // Try with API key in query param first
-      const urlWithKey = `${endpoint}?key=${apiKey}`;
-      try {
-        const res = await fetch(urlWithKey, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (res.ok) {
-          data = await res.json();
-          break;
-        }
-        const txt = await res.text();
-        lastError = new Error(`Gemini(${urlWithKey}) ${res.status}: ${txt}`);
-        // if 400 due to unknown field, try next body shape
-        if (res.status === 400) continue;
-      } catch (err) {
-        lastError = err;
-      }
-
-      // Try with Authorization Bearer header
-      try {
-        const res2 = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify(body),
-        });
-        if (res2.ok) {
-          data = await res2.json();
-          break;
-        }
-        const txt2 = await res2.text();
-        lastError = new Error(`Gemini(${endpoint} auth) ${res2.status}: ${txt2}`);
-        if (res2.status === 400) continue;
-      } catch (err2) {
-        lastError = err2;
-      }
+  try {
+    // Use server proxy to avoid exposing API key and CORS/400 inconsistencies
+    const resp = await fetch('/api/gemini/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`서버 프로시 응답 에러: ${resp.status} ${txt}`);
     }
-    if (data) break;
-  }
-
-  if (!data) {
-    throw lastError || new Error('Gemini API 호출 실패');
-  }
-
-  if (data?.candidates?.length > 0) {
-    const candidate = data.candidates[0];
-    if (candidate?.content) {
-      const content = candidate.content;
-      if (typeof content === 'string') return content;
-      if (Array.isArray(content)) return content.map((item: any) => item?.text || '').filter(Boolean).join('\n');
-      if (content?.text) return content.text;
+    const json = await resp.json();
+    // Try to extract text from server response
+    const raw = json?.raw;
+    if (!raw) return JSON.stringify(json, null, 2);
+    if (typeof raw === 'string') return raw;
+    // If raw has fields from Gemini, attempt to parse similarly to previous logic
+    if (raw?.candidates?.length) {
+      const c = raw.candidates[0];
+      if (typeof c.content === 'string') return c.content;
+      if (Array.isArray(c.content)) return c.content.map((x:any)=>x.text||'').join('\n');
+      return c.content?.text || JSON.stringify(raw, null, 2);
     }
+    if (raw?.output?.text) return raw.output.text;
+    if (raw?.output) return JSON.stringify(raw.output, null, 2);
+    return JSON.stringify(raw, null, 2);
+  } catch (err) {
+    throw err;
   }
-
-  if (typeof data?.output === 'string') return data.output;
-  if (data?.output?.text) return data.output.text;
-  if (data?.output?.[0]?.content?.[0]?.text) return data.output[0].content[0].text;
-  if (data?.result?.[0]?.content?.[0]?.text) return data.result[0].content[0].text;
-  if (data?.predictions?.[0]?.content?.[0]?.text) return data.predictions[0].content[0].text;
-  if (data?.predictions?.[0]?.output?.[0]?.content?.[0]?.text) return data.predictions[0].output[0].content[0].text;
-
-  return JSON.stringify(data, null, 2);
+  
 }
 
 export async function fetchDictionaryEntry(word: string): Promise<string> {
-  const apiKey = requireKey(KOREAN_DICT_KEY, '표준국어대사전 API 키');
-  const baseUrl = 'https://stdict.korean.go.kr/api/search';
-  const params = new URLSearchParams({
-    key: apiKey,
-    target_type: 'search',
-    req_type: 'json',
-    method: 'searchDic',
-    part: 'word',
-    q: word,
-  });
-
-  if (KOREAN_DICT_CERTKEY) {
-    params.set('certkey_no', KOREAN_DICT_CERTKEY);
-  }
-
-  const directUrl = `${baseUrl}?${params.toString()}`;
-  let response: Response | null = null;
+  // Prefer server proxy to avoid CORS and key exposure
   try {
-    response = await fetch(directUrl, { headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error(`status:${response.status}`);
+    const resp = await fetch(`/api/dictionary/define?word=${encodeURIComponent(word)}`);
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`서버 프록시 에러: ${resp.status} ${t}`);
+    }
+    const json = await resp.json();
+    // server returns { raw: ... }
+    const raw = json?.raw;
+    if (!raw) return JSON.stringify(json, null, 2);
+    if (typeof raw === 'string') return parseDictionaryXml(raw);
+    return parseDictionaryResponse(raw, JSON.stringify(raw));
   } catch (err) {
-    // CORS or network error — try a public CORS proxy fallback (allorigins)
+    // Fallback to client-side direct fetch (best-effort)
+    const apiKey = KOREAN_DICT_KEY;
+    if (!apiKey) throw err;
+    const baseUrl = 'https://stdict.korean.go.kr/api/search';
+    const params = new URLSearchParams({ key: apiKey, target_type: 'search', req_type: 'json', method: 'searchDic', part: 'word', q: word });
+    if (KOREAN_DICT_CERTKEY) params.set('certkey_no', KOREAN_DICT_CERTKEY);
+    const directUrl = `${baseUrl}?${params.toString()}`;
+    let response: Response | null = null;
     try {
+      response = await fetch(directUrl, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`status:${response.status}`);
+    } catch (err2) {
       const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
       response = await fetch(proxy, { headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error(`프록시 응답 실패: ${response.status}`);
-    } catch (err2) {
-      throw new Error(`표준국어대사전 요청 실패: ${(err2 as any)?.message || (err as any)?.message || '네트워크 오류'}`);
     }
-  }
-  const text = await response.text();
-  try {
-    const data = JSON.parse(text);
-    return parseDictionaryResponse(data, text);
-  } catch {
-    return parseDictionaryXml(text);
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      return parseDictionaryResponse(data, text);
+    } catch {
+      return parseDictionaryXml(text);
+    }
   }
 }
