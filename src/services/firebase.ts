@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import {
   getAuth,
   signInAnonymously,
@@ -29,11 +30,13 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+let analyticsPromise: Promise<Analytics | null> | null = null;
 
 function requireFirebaseConfig() {
   const missing = [];
@@ -51,6 +54,13 @@ function requireFirebaseConfig() {
 export function initFirebase() {
   requireFirebaseConfig();
   return app;
+}
+
+export function initAnalytics() {
+  requireFirebaseConfig();
+  if (!firebaseConfig.measurementId) return Promise.resolve(null);
+  analyticsPromise ??= isSupported().then((supported) => (supported ? getAnalytics(app) : null));
+  return analyticsPromise;
 }
 
 export async function signInUserAnonymously(): Promise<UserCredential> {

@@ -2,94 +2,164 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
+import https from 'node:https';
 
 dotenv.config();
 
+process.on('uncaughtException', (error) => {
+  console.error('uncaughtException:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('unhandledRejection:', reason);
+});
+
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
-// Firebase Admin 초기화 (서비스 계정은 환경변수로 제공)
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
-  const key = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
-  admin.initializeApp({ credential: admin.credential.cert(key) });
-} else {
-  admin.initializeApp();
+let firebaseAdminReady = false;
+
+function requestText(url: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}) {
+  return new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = https.request(
+      parsed,
+      {
+        method: options.method || 'GET',
+        headers: options.headers,
+      },
+      (response) => {
+        let text = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          text += chunk;
+        });
+        response.on('end', () => {
+          resolve({ statusCode: response.statusCode || 500, text });
+        });
+      },
+    );
+
+    req.on('error', reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
 }
 
-// 토큰 검증 미들웨어
+try {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    const key = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    admin.initializeApp({ credential: admin.credential.cert(key) });
+    firebaseAdminReady = true;
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    admin.initializeApp();
+    firebaseAdminReady = true;
+  }
+} catch (error) {
+  console.warn('Firebase Admin 초기화 생략:', error);
+}
+
 async function verifyFirebaseIdToken(req: any, res: any, next: any) {
+  if (!firebaseAdminReady) return res.status(503).json({ error: 'Firebase Admin is not configured' });
+
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
-  const idToken = auth.split('Bearer ')[1];
+
   try {
+    const idToken = auth.split('Bearer ')[1];
     const decoded = await admin.auth().verifyIdToken(idToken);
-    (req as any).uid = decoded.uid;
+    req.uid = decoded.uid;
     next();
-  } catch (e) {
+  } catch {
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
 
-// 간단한 엔드포인트 샘플
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.post('/api/prompt/refine', verifyFirebaseIdToken, async (req, res) => {
   const { text, level } = req.body;
-  // TODO: aiService.refinePrompt(text, level)
   return res.json({ refined: text, level: level || 'normal' });
 });
 
-app.post('/api/dictionary/define', async (req, res) => {
-  const word = (req.body && req.body.word) || req.query.word;
-  if (!word) return res.status(400).json({ error: 'word 파라미터 필요' });
+app.post('/api/gemini/generate', async (req, res) => {
+  const { prompt } = req.body || {};
+  if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
+
+  const key = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  if (!key) return res.status(500).json({ error: 'server missing GEMINI_API_KEY' });
+
   try {
-    const apiKey = process.env.KOREAN_DICT_KEY;
-    const cert = process.env.KOREAN_DICT_CERTKEY;
-    if (!apiKey) return res.status(500).json({ error: '서버에 표준국어대사전 키가 없음' });
-    const baseUrl = 'https://stdict.korean.go.kr/api/search';
-    const params = new URLSearchParams({ key: apiKey, target_type: 'search', req_type: 'json', method: 'searchDic', part: 'word', q: word });
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const geminiResponse = await requestText(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.35,
+          maxOutputTokens: 1200,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
+        },
+      }),
+    });
+
+    const rawText = geminiResponse.text;
+    if (geminiResponse.statusCode < 200 || geminiResponse.statusCode >= 300) {
+      return res.status(geminiResponse.statusCode).json({ error: rawText });
+    }
+
+    const raw = JSON.parse(rawText);
+    const text = raw?.candidates?.[0]?.content?.parts?.map((part: any) => part.text || '').join('\n').trim() || '';
+    return res.json({ text, raw });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get('/api/dictionary/define', async (req, res) => {
+  const word = String(req.query.word || '').trim();
+  if (!word) return res.status(400).json({ error: 'word parameter required' });
+
+  const apiKey = process.env.KOREAN_DICT_KEY;
+  const cert = process.env.KOREAN_DICT_CERTKEY;
+  if (!apiKey) return res.status(500).json({ error: 'server missing KOREAN_DICT_KEY' });
+
+  try {
+    const params = new URLSearchParams({
+      key: apiKey,
+      q: word,
+      req_type: 'json',
+      part: 'word',
+      sort: 'dict',
+      advanced: 'n',
+      target: '1',
+      method: 'searchDic',
+      type1: 'word',
+    });
     if (cert) params.set('certkey_no', cert);
-    const direct = `${baseUrl}?${params.toString()}`;
-    const r = await fetch(direct, { headers: { Accept: 'application/json' } });
-    const text = await r.text();
-    // try parse json
+
+    const response = await requestText(`https://stdict.korean.go.kr/api/search.do?${params.toString()}`);
+    const text = response.text;
+    if (response.statusCode < 200 || response.statusCode >= 300) return res.status(response.statusCode).json({ error: text });
+
     try {
-      const data = JSON.parse(text);
-      return res.json({ word, raw: data });
+      return res.json({ word, raw: JSON.parse(text) });
     } catch {
       return res.json({ word, raw: text });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || String(err) });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message || String(error) });
   }
 });
 
-// Server-side Gemini proxy
-app.post('/api/gemini/generate', verifyFirebaseIdToken, async (req, res) => {
-  const { prompt } = req.body || {};
-  if (!prompt) return res.status(400).json({ error: 'prompt required' });
-  try {
-    const key = process.env.GEMINI_API_KEY;
-    const model = process.env.GEMINI_MODEL || 'chat-bison-001';
-    if (!key) return res.status(500).json({ error: 'server missing GEMINI_API_KEY' });
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta2/models/${model}:generateText?key=${key}`;
-    const body = { text: prompt, temperature: 0.65, candidateCount: 1 };
-    const r = await fetch(endpoint, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    const txt = await r.text();
-    try {
-      const data = JSON.parse(txt);
-      return res.json({ raw: data });
-    } catch {
-      return res.json({ raw: txt });
-    }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || String(err) });
-  }
-});
-
-app.post('/api/rag/query', verifyFirebaseIdToken, async (req, res) => {
-  // TODO: vector search -> LLM
+app.post('/api/rag/query', verifyFirebaseIdToken, async (_req, res) => {
   return res.status(501).json({ error: 'Not implemented' });
 });
 
