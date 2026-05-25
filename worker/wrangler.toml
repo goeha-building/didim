@@ -6,6 +6,7 @@ compatibility_date = "2024-05-27" # 오늘 날짜 또는 최신 날짜로 설정
 
 [vars]
 GEMINI_MODEL_SECRET = "gemini-1.5-flash" # Gemini 모델 이름 (index.js에서 env.GEMINI_MODEL_SECRET로 접근)
+IMAGEN_3_MODEL_SECRET = "imagen-3.0-generate-002" # Imagen 3 모델 이름 (index.js에서 env.IMAGEN_3_MODEL_SECRET로 접근)
 
 # Gemini API 키는 Secret으로 등록합니다.
 # 이 파일에 직접 작성하지 마세요!

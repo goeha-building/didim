@@ -1,94 +1,70 @@
-import { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import type { DangerZone } from '../services/map';
+// src/components/MapView.tsx
+import React, { useEffect, useRef, useState } from 'react';
+import { initMap, getCurrentLocation } from '../services/map';
 
-const markerIcon = new L.Icon({
-  iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href,
-  iconRetinaUrl: new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).href,
-  shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
-
-type SafeZone = {
-  id: number;
-  name: string;
-  description: string;
-  lat: number;
-  lng: number;
-  type: 'safe' | 'risk';
-  radius?: number;
-};
-
-type MapViewProps = {
-  safeZones: SafeZone[];
-  dangerZones: DangerZone[];
-  currentLocation: { lat: number; lng: number } | null;
-  vworldKey?: string;
-};
-
-function AutoPan({ position }: { position: { lat: number; lng: number } | null }) {
-  const map = useMap();
+const MapView: React.FC = () => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (position) {
-      map.setView([position.lat, position.lng], 14, { animate: true });
+    // Kakao Map SDK가 로드되었는지 확인 후 지도 초기화
+    if (window.kakao && window.kakao.maps && mapContainerRef.current) {
+      try {
+        const mapInstance = initMap(mapContainerRef.current);
+        setMapLoaded(true);
+
+        // 현재 위치 가져오기
+        getCurrentLocation(mapInstance)
+          .then(() => console.log("현재 위치 표시 완료"))
+          .catch((error) => setErrorMessage(error.message));
+      } catch (e: any) {
+        setErrorMessage(e.message);
+      }
+    } else {
+      // SDK가 아직 로드되지 않았다면, 로드 이벤트를 기다림
+      const handleKakaoMapLoad = () => {
+        if (mapContainerRef.current) {
+          try {
+            const mapInstance = initMap(mapContainerRef.current);
+            setMapLoaded(true);
+            getCurrentLocation(mapInstance)
+              .then(() => console.log("현재 위치 표시 완료"))
+              .catch((error) => setErrorMessage(error.message));
+          } catch (e: any) {
+            setErrorMessage(e.message);
+          }
+        }
+      };
+      // window.kakao.maps.load 콜백은 main.tsx에서 처리하므로, 여기서는 단순히 존재 여부만 확인
+      if (window.kakao && window.kakao.maps && window.kakao.maps.load) {
+        window.kakao.maps.load(handleKakaoMapLoad);
+      } else {
+        setErrorMessage("카카오 지도 SDK 로드 실패 또는 준비 안됨. VITE_KAKAO_MAP_KEY를 확인하세요.");
+      }
     }
-  }, [map, position]);
-
-  return null;
-}
-
-export default function MapView({ safeZones, dangerZones, currentLocation, vworldKey }: MapViewProps) {
-  const tileUrl = vworldKey
-    ? `https://api.vworld.kr/req/wmts/1.0.0/${vworldKey}/Base/geo/{z}/{x}/{y}.png`
-    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-  const attribution = vworldKey
-    ? '© VWorld / 국토지리정보원'
-    : '&copy; OpenStreetMap contributors';
-
-  const center = currentLocation ? [currentLocation.lat, currentLocation.lng] : [37.5665, 126.9780];
+  }, []);
 
   return (
-    <MapContainer center={center as [number, number]} zoom={13} className="map-view" scrollWheelZoom={true}>
-      <TileLayer url={tileUrl} attribution={attribution} />
-      {currentLocation && (
-        <Marker position={[currentLocation.lat, currentLocation.lng]} icon={markerIcon}>
-          <Popup>현재 위치</Popup>
-        </Marker>
-      )}
-      {safeZones.map((zone) => (
-        <Marker key={`safe-${zone.id}`} position={[zone.lat, zone.lng]} icon={markerIcon}>
-          <Popup>
-            <strong>{zone.name}</strong>
-            <div>{zone.description}</div>
-            <div>유형: {zone.type === 'safe' ? '세이프존' : '주의 지역'}</div>
-          </Popup>
-        </Marker>
-      ))}
-      {dangerZones.map((zone) => (
-        <>
-          <Circle
-            key={`danger-${zone.id}`}
-            center={[zone.lat, zone.lng]}
-            radius={zone.radius}
-            pathOptions={{ color: '#ef4444', fillColor: 'rgba(239, 68, 68, 0.18)', weight: 2 }}
-          />
-          <Marker key={`danger-marker-${zone.id}`} position={[zone.lat, zone.lng]} icon={markerIcon}>
-            <Popup>
-              <strong>{zone.name}</strong>
-              <div>{zone.description}</div>
-              <div>위험 반경: {zone.radius}m</div>
-            </Popup>
-          </Marker>
-        </>
-      ))}
-      <AutoPan position={currentLocation} />
-    </MapContainer>
+    <div style={{ position: 'relative', width: '100%', height: '500px', borderRadius: '8px', overflow: 'hidden' }}>
+      <div
+        id="kakao-map-container"
+        ref={mapContainerRef}
+        style={{ width: '100%', height: '100%' }}
+      >
+        {!mapLoaded && !errorMessage && (
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white' }}>
+            지도 로딩 중...
+          </div>
+        )}
+        {errorMessage && (
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(255,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white' }}>
+            오류: {errorMessage}
+          </div>
+        )}
+      </div>
+    </div>
   );
-}
+};
+
+export default MapView;
