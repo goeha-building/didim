@@ -1,0 +1,12 @@
+# worker/wrangler.toml
+
+name = "didim-AI" # 사용자님이 정한 Workers 스크립트 이름
+main = "src/index.js" # Workers 코드의 진입점 파일 (worker 폴더 안의 src/index.js)
+compatibility_date = "2024-05-27" # 오늘 날짜 또는 최신 날짜로 설정 (예: "2024-05-27")
+
+[vars]
+GEMINI_MODEL_SECRET = "gemini-1.5-flash" # Gemini 모델 이름 (index.js에서 env.GEMINI_MODEL_SECRET로 접근)
+
+# Gemini API 키는 Secret으로 등록합니다.
+# 이 파일에 직접 작성하지 마세요!
+# 'GEMINI_API_KEY_SECRET' 이 이름은 index.js 코드에서 env.GEMINI_API_KEY_SECRET로 접근하는 이름과 일치해야 합니다.

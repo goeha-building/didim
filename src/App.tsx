@@ -147,27 +147,24 @@ function App() {
 
       <main>
         {view === 'home' && (
-          <section className="hero-panel">
-            <div className="hero-copy">
-              <p className="eyebrow">대회 제출용 MVP</p>
-              <h2>질문을 못 해도, 읽기 어려워도, 위험한 상황이어도 다음 발판을 보여줍니다.</h2>
-              <p>
-                질문 조립기, RAG 대화, 터치 풀이, 음성 통화 UI, 안전 지도, 카드뉴스, 보호자 알림을 한 화면 흐름으로 묶었습니다.
-                실제 API 키가 없을 때도 심사 시나리오를 설명할 수 있도록 데모 모드가 동작합니다.
-              </p>
-              <div className="hero-actions">
-                <button type="button" onClick={() => setView('prompt')}>질문 만들기</button>
-                <button type="button" onClick={() => setView('map')}>안전 지도 보기</button>
-              </div>
+          <section className="hero-panel home-character-view">
+            <div className="main-character-placeholder" aria-label="메인 캐릭터">
+              <span role="img" aria-label="캐릭터 아이콘">🤖</span> {/* Placeholder character icon */}
             </div>
-            <div className="phone-preview" aria-label="앱 미리보기">
-              <div className="phone-status">보호자 연결됨 · 위험 감지 켜짐</div>
-              <div className="assistant-bubble">계약서에 서명하기 전에는 임금, 근무시간, 쉬는 시간을 먼저 확인해요.</div>
-              <div className="step-list">
-                <span>1. 제목 확인</span>
-                <span>2. 돈과 시간 확인</span>
-                <span>3. 모르면 바로 질문</span>
-              </div>
+            <h2>안녕하세요! 무엇을 도와드릴까요?</h2>
+            <div className="home-quick-actions">
+              <button type="button" onClick={() => setView('prompt')}>
+                질문 만들기
+              </button>
+              <button type="button" onClick={() => {
+                setView('explain');
+                lookupWord(); // Auto-trigger dictionary lookup for demo
+              }}>
+                단어 풀이
+              </button>
+              <button type="button" onClick={() => setView('map')}>
+                안전 지도
+              </button>
             </div>
           </section>
         )}

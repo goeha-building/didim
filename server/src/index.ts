@@ -3,8 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import https from 'node:https';
+import * as functions from 'firebase-functions'; // Firebase Functions import
 
-dotenv.config();
+dotenv.config(); // Keep for local development
 
 process.on('uncaughtException', (error) => {
   console.error('uncaughtException:', error);
@@ -15,10 +16,20 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true })); // Allow all origins for API calls, or specify client origin
 app.use(express.json({ limit: '1mb' }));
 
 let firebaseAdminReady = false;
+
+// Helper to get environment variables, checking Firebase Functions config first, then process.env
+function getEnv(key: string): string | undefined {
+  if (process.env.NODE_ENV === 'production' && functions.config() && functions.config().api) {
+    // Check for Firebase Functions config (e.g., functions.config().api.gemini_key)
+    const configKey = key.toLowerCase().replace(/_/g, ''); // Convert GEMINI_API_KEY to gemini_key
+    return functions.config().api[configKey];
+  }
+  return process.env[key];
+}
 
 function requestText(url: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}) {
   return new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
@@ -48,11 +59,15 @@ function requestText(url: string, options: { method?: string; headers?: Record<s
 }
 
 try {
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
-    const key = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  // Only initialize Firebase Admin if running as a function or credentials are provided
+  if (getEnv('GOOGLE_APPLICATION_CREDENTIALS_JSON')) {
+    const key = JSON.parse(getEnv('GOOGLE_APPLICATION_CREDENTIALS_JSON') as string);
     admin.initializeApp({ credential: admin.credential.cert(key) });
     firebaseAdminReady = true;
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  } else if (getEnv('GOOGLE_APPLICATION_CREDENTIALS')) {
+    admin.initializeApp();
+    firebaseAdminReady = true;
+  } else if (functions.config().firebase) { // Initialize using default Firebase project for functions
     admin.initializeApp();
     firebaseAdminReady = true;
   }
@@ -89,8 +104,8 @@ app.post('/api/gemini/generate', async (req, res) => {
   const { prompt } = req.body || {};
   if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
 
-  const key = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const key = getEnv('GEMINI_API_KEY'); // Use getEnv helper
+  const model = getEnv('GEMINI_MODEL') || 'gemini-1.5-flash'; // Use getEnv helper
   if (!key) return res.status(500).json({ error: 'server missing GEMINI_API_KEY' });
 
   try {
@@ -127,8 +142,8 @@ app.get('/api/dictionary/define', async (req, res) => {
   const word = String(req.query.word || '').trim();
   if (!word) return res.status(400).json({ error: 'word parameter required' });
 
-  const apiKey = process.env.KOREAN_DICT_KEY;
-  const cert = process.env.KOREAN_DICT_CERTKEY;
+  const apiKey = getEnv('KOREAN_DICT_KEY'); // Use getEnv helper
+  const cert = getEnv('KOREAN_DICT_CERTKEY'); // Use getEnv helper
   if (!apiKey) return res.status(500).json({ error: 'server missing KOREAN_DICT_KEY' });
 
   try {
@@ -163,5 +178,7 @@ app.post('/api/rag/query', verifyFirebaseIdToken, async (_req, res) => {
   return res.status(501).json({ error: 'Not implemented' });
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
+// Removed app.listen()
+
+// Export the Express app as a Firebase Function
+exports.api = functions.https.onRequest(app);
